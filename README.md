@@ -391,32 +391,6 @@ gpus:
         container: "serve"
 ```
 
-## 發布
-
-使用 [GoReleaser](https://goreleaser.com/) 在本地發布：
-
-```bash
-# 安裝 goreleaser（macOS）
-brew install goreleaser
-
-# 先登入 DockerHub
-docker login
-
-# 設定 DockerHub 帳號
-export DOCKER_OWNER=<your-dockerhub-username>
-
-# 測試建置（不推送、不建 release）
-goreleaser release --snapshot --clean
-
-# 正式發布（需先建立 git tag）
-git tag v0.1.0
-goreleaser release --clean
-```
-
-發布產出：
-- `dist/` 下 linux/darwin × amd64/arm64 二進位檔（tar.gz）
-- DockerHub multi-arch image：`$DOCKER_OWNER/mock-dcgm-exporter-mig:v0.1.0`
-
 ## 專案結構
 
 ```

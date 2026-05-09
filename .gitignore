@@ -1,3 +1,4 @@
 /mock-dcgm-exporter-mig
 dist/
 *.tar
+.local/
