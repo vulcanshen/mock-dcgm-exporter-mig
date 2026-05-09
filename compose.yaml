@@ -1,6 +1,6 @@
 services:
   mock-dcgm-exporter-mig:
-    build: .
+    image: vulcanshen2304/mock-dcgm-exporter-mig:latest
     ports:
       - "9400:9400"
     volumes:
