@@ -1,0 +1,13 @@
+apiVersion: v2
+name: mock-dcgm-exporter-mig
+description: Mock NVIDIA dcgm-exporter with MIG metrics for development and testing
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - nvidia
+  - gpu
+  - mig
+  - dcgm
+  - monitoring
+  - prometheus

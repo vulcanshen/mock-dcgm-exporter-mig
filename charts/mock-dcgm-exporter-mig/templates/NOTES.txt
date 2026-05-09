@@ -1,0 +1,5 @@
+mock-dcgm-exporter-mig has been deployed.
+
+Metrics endpoint:
+  kubectl port-forward svc/{{ include "mock-dcgm-exporter-mig.fullname" . }} 9400:{{ .Values.service.port }}
+  curl http://localhost:9400/metrics

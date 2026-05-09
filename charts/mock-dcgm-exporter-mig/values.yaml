@@ -1,0 +1,66 @@
+image:
+  repository: mock-dcgm-exporter-mig
+  tag: ""
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+service:
+  type: ClusterIP
+  port: 9400
+
+serviceMonitor:
+  enabled: false
+  interval: 15s
+  namespace: ""
+
+resources: {}
+
+nodeSelector: {}
+
+tolerations: []
+
+config: |
+  gpus:
+    - model: "NVIDIA H100 80GB HBM3"
+      uuid: "GPU-559c7f49-e3ff-0358-0c74-8f7eeb60b7b0"
+      memory_gb: 80
+      driver_version: "570.195.03"
+      hostname: "mig-dev-node"
+      instances:
+        - profile: "3g.40gb"
+          gi_id: 1
+          namespace: "project-ml-train"
+          pod: "train-job-a-7f8d4b-x9k2p"
+          container: "tf"
+        - profile: "3g.40gb"
+          gi_id: 2
+          namespace: "project-ml-train"
+          pod: "train-job-b-3c5a1e-m4n7q"
+          container: "tf"
+        - profile: "1g.10gb"
+          gi_id: 7
+          namespace: "project-inference"
+          pod: "infer-svc-d9e2f1-j3h8w"
+          container: "serving"
+    - model: "NVIDIA H100 80GB HBM3"
+      uuid: "GPU-a31b7c84-6d2e-4f19-b8a0-3e5c9f1d72e6"
+      memory_gb: 80
+      driver_version: "570.195.03"
+      hostname: "mig-dev-node"
+      instances:
+        - profile: "4g.40gb"
+          gi_id: 0
+          namespace: "project-ml-train"
+          pod: "train-job-c-5a2d8e-k7r3p"
+          container: "pytorch"
+        - profile: "2g.20gb"
+          gi_id: 1
+          namespace: "project-data"
+          pod: "preprocess-a-8b3f1c-n2x5q"
+          container: "spark"
+        - profile: "1g.10gb"
+          gi_id: 7
+          namespace: "project-inference"
+          pod: "infer-svc-e4c7a2-w9m1k"
+          container: "serving"

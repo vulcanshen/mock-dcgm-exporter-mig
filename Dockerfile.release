@@ -1,0 +1,5 @@
+FROM scratch
+COPY mock-dcgm-exporter-mig /mock-dcgm-exporter-mig
+COPY config.yaml /config.yaml
+EXPOSE 9400
+ENTRYPOINT ["/mock-dcgm-exporter-mig", "-config", "/config.yaml"]

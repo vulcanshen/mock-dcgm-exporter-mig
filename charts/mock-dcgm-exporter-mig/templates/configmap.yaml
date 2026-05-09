@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "mock-dcgm-exporter-mig.fullname" . }}
+  labels:
+    {{- include "mock-dcgm-exporter-mig.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+{{ .Values.config | indent 4 }}

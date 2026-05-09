@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mock-dcgm-exporter-mig
+  labels:
+    app: mock-dcgm-exporter-mig
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mock-dcgm-exporter-mig
+  template:
+    metadata:
+      labels:
+        app: mock-dcgm-exporter-mig
+    spec:
+      containers:
+        - name: mock-dcgm-exporter-mig
+          image: mock-dcgm-exporter-mig:latest
+          args:
+            - "-config"
+            - "/etc/mock-dcgm/config.yaml"
+          ports:
+            - name: metrics
+              containerPort: 9400
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: metrics
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: metrics
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          volumeMounts:
+            - name: config
+              mountPath: /etc/mock-dcgm
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: mock-dcgm-exporter-mig

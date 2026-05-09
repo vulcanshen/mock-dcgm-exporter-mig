@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mock-dcgm-exporter-mig
+  labels:
+    app: mock-dcgm-exporter-mig
+spec:
+  type: ClusterIP
+  ports:
+    - port: 9400
+      targetPort: metrics
+      protocol: TCP
+      name: metrics
+  selector:
+    app: mock-dcgm-exporter-mig
