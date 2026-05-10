@@ -13,5 +13,5 @@ labels:
 
 images:
   - name: mock-dcgm-exporter-mig
-    newName: mock-dcgm-exporter-mig
+    newName: vulcanshen2304/mock-dcgm-exporter-mig
     newTag: latest
