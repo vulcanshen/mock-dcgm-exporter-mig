@@ -8,23 +8,23 @@ Mock NVIDIA dcgm-exporter that simulates MIG (Multi-Instance GPU) Prometheus met
 
 ```bash
 helm install mock-dcgm \
-  https://github.com/vulcanshen/mock-dcgm-exporter-mig/releases/download/v0.3.0/mock-dcgm-exporter-mig-0.3.0.tgz
+  https://github.com/vulcanshen/mock-dcgm-exporter-mig/releases/download/v0.3.1/mock-dcgm-exporter-mig-0.3.0.tgz
 
 # Custom MIG config
 helm install mock-dcgm \
-  https://github.com/vulcanshen/mock-dcgm-exporter-mig/releases/download/v0.3.0/mock-dcgm-exporter-mig-0.3.0.tgz \
+  https://github.com/vulcanshen/mock-dcgm-exporter-mig/releases/download/v0.3.1/mock-dcgm-exporter-mig-0.3.0.tgz \
   --set-file config=my-config.yaml
 
 # Enable ServiceMonitor (requires Prometheus Operator)
 helm install mock-dcgm \
-  https://github.com/vulcanshen/mock-dcgm-exporter-mig/releases/download/v0.3.0/mock-dcgm-exporter-mig-0.3.0.tgz \
+  https://github.com/vulcanshen/mock-dcgm-exporter-mig/releases/download/v0.3.1/mock-dcgm-exporter-mig-0.3.0.tgz \
   --set serviceMonitor.enabled=true
 
 # Specify image
 helm install mock-dcgm \
-  https://github.com/vulcanshen/mock-dcgm-exporter-mig/releases/download/v0.3.0/mock-dcgm-exporter-mig-0.3.0.tgz \
+  https://github.com/vulcanshen/mock-dcgm-exporter-mig/releases/download/v0.3.1/mock-dcgm-exporter-mig-0.3.0.tgz \
   --set image.repository=vulcanshen2304/mock-dcgm-exporter-mig \
-  --set image.tag=0.3.0
+  --set image.tag=0.3.1
 ```
 
 ### Kustomize
@@ -36,7 +36,7 @@ kubectl apply -k https://github.com/vulcanshen/mock-dcgm-exporter-mig/deploy/kus
 # Or clone and customize image
 git clone https://github.com/vulcanshen/mock-dcgm-exporter-mig.git
 cd mock-dcgm-exporter-mig/deploy/kustomize/base
-kustomize edit set image mock-dcgm-exporter-mig=vulcanshen2304/mock-dcgm-exporter-mig:0.3.0
+kustomize edit set image mock-dcgm-exporter-mig=vulcanshen2304/mock-dcgm-exporter-mig:0.3.1
 kubectl apply -k .
 ```
 

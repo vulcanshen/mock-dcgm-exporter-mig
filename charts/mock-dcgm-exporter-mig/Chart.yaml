@@ -2,8 +2,8 @@ apiVersion: v2
 name: mock-dcgm-exporter-mig
 description: Mock NVIDIA dcgm-exporter with MIG metrics for development and testing
 type: application
-version: 0.3.0
-appVersion: "0.3.0"
+version: 0.3.1
+appVersion: "0.3.1"
 keywords:
   - nvidia
   - gpu
