@@ -339,13 +339,11 @@ func labelsStr(inst *MIGInstance) string {
 		fmt.Sprintf(`Hostname="%s"`, inst.Hostname),
 		fmt.Sprintf(`DCGM_FI_DRIVER_VERSION="%s"`, inst.Driver),
 	}
-	if inst.Namespace != "" {
-		pairs = append(pairs,
-			fmt.Sprintf(`namespace="%s"`, inst.Namespace),
-			fmt.Sprintf(`pod="%s"`, inst.Pod),
-			fmt.Sprintf(`container="%s"`, inst.Container),
-		)
-	}
+	pairs = append(pairs,
+		fmt.Sprintf(`container="%s"`, inst.Container),
+		fmt.Sprintf(`namespace="%s"`, inst.Namespace),
+		fmt.Sprintf(`pod="%s"`, inst.Pod),
+	)
 	return strings.Join(pairs, ",")
 }
 
