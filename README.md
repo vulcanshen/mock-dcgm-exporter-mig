@@ -8,23 +8,23 @@ Mock NVIDIA dcgm-exporter that simulates MIG (Multi-Instance GPU) Prometheus met
 
 ```bash
 helm install mock-dcgm \
-  https://github.com/vulcanshen/mock-dcgm-exporter-mig/releases/download/v0.1.0/mock-dcgm-exporter-mig-0.1.0.tgz
+  https://github.com/vulcanshen/mock-dcgm-exporter-mig/releases/download/v0.3.0/mock-dcgm-exporter-mig-0.3.0.tgz
 
 # Custom MIG config
 helm install mock-dcgm \
-  https://github.com/vulcanshen/mock-dcgm-exporter-mig/releases/download/v0.1.0/mock-dcgm-exporter-mig-0.1.0.tgz \
+  https://github.com/vulcanshen/mock-dcgm-exporter-mig/releases/download/v0.3.0/mock-dcgm-exporter-mig-0.3.0.tgz \
   --set-file config=my-config.yaml
 
 # Enable ServiceMonitor (requires Prometheus Operator)
 helm install mock-dcgm \
-  https://github.com/vulcanshen/mock-dcgm-exporter-mig/releases/download/v0.1.0/mock-dcgm-exporter-mig-0.1.0.tgz \
+  https://github.com/vulcanshen/mock-dcgm-exporter-mig/releases/download/v0.3.0/mock-dcgm-exporter-mig-0.3.0.tgz \
   --set serviceMonitor.enabled=true
 
 # Specify image
 helm install mock-dcgm \
-  https://github.com/vulcanshen/mock-dcgm-exporter-mig/releases/download/v0.1.0/mock-dcgm-exporter-mig-0.1.0.tgz \
+  https://github.com/vulcanshen/mock-dcgm-exporter-mig/releases/download/v0.3.0/mock-dcgm-exporter-mig-0.3.0.tgz \
   --set image.repository=vulcanshen2304/mock-dcgm-exporter-mig \
-  --set image.tag=0.1.0
+  --set image.tag=0.3.0
 ```
 
 ### Kustomize
@@ -36,7 +36,7 @@ kubectl apply -k https://github.com/vulcanshen/mock-dcgm-exporter-mig/deploy/kus
 # Or clone and customize image
 git clone https://github.com/vulcanshen/mock-dcgm-exporter-mig.git
 cd mock-dcgm-exporter-mig/deploy/kustomize/base
-kustomize edit set image mock-dcgm-exporter-mig=vulcanshen2304/mock-dcgm-exporter-mig:0.1.0
+kustomize edit set image mock-dcgm-exporter-mig=vulcanshen2304/mock-dcgm-exporter-mig:0.3.0
 kubectl apply -k .
 ```
 
@@ -55,9 +55,40 @@ docker run -d --name mock-dcgm -p 9400:9400 \
 
 GPU topology and MIG partitioning are defined in `config.yaml`. No code changes needed.
 
+### CSV profile
+
+Controls which set of metrics to output, matching real dcgm-exporter CSV configurations:
+
+```yaml
+# "dcp-metrics-included" (default) — 22 metrics, includes PROF_* profiling metrics
+# "default-counters"               — 12 metrics, matches older/default deployments
+csv_profile: "dcp-metrics-included"
+```
+
+| Profile | Metrics | PROF_GR_ENGINE_ACTIVE | Use case |
+|---|---|---|---|
+| `dcp-metrics-included` | 22 | Yes | Proper MIG monitoring setup |
+| `default-counters` | 12 | No | Simulating environments without DCP config |
+
+### GPU model presets
+
+MEM_CLOCK, idle/max power, and MIG slice count are auto-derived from the `model` field:
+
+| Model | MEM_CLOCK | Idle Power | Max Power | MIG Slices |
+|---|---|---|---|---|
+| H200 | 2619 MHz | 130W | 700W | 7 |
+| H100 | 1593 MHz | 120W | 700W | 7 |
+| A100 80GB | 1215 MHz | 45W | 400W | 7 |
+| A100 (40GB) | 1215 MHz | 35W | 300W | 7 |
+| A30 | 1215 MHz | 25W | 165W | 4 |
+
+### GPU topology
+
 Default config:
 
 ```yaml
+csv_profile: "dcp-metrics-included"
+
 gpus:
   - model: "NVIDIA H100 80GB HBM3"
     uuid: "GPU-559c7f49-e3ff-0358-0c74-8f7eeb60b7b0"
@@ -195,7 +226,6 @@ Each metric includes labels matching real dcgm-exporter MIG output:
 DCGM_FI_DEV_FB_USED{
   gpu="0",
   UUID="GPU-559c7f49-...",
-  pci_bus_id="00000000:1A:00.0",
   device="nvidia0",
   modelName="NVIDIA H100 80GB HBM3",
   GPU_I_PROFILE="3g.40gb",
