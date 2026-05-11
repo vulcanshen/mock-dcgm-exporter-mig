@@ -87,7 +87,20 @@ csv_profile: "dcp-metrics-included"
 | 11 | `DCGM_FI_DEV_NVLINK_BANDWIDTH_TOTAL` | NVLink bandwidth | Shared |
 | 12 | `DCGM_FI_DEV_VGPU_LICENSE_STATUS` | vGPU license status | Shared |
 
-`dcp-metrics-included` adds 10 more metrics on top of the above: `PROF_GR_ENGINE_ACTIVE`, `PROF_SM_ACTIVE`, `PROF_PIPE_TENSOR_ACTIVE`, `PROF_DRAM_ACTIVE`, `PROF_PCIE_TX_BYTES`, `PROF_PCIE_RX_BYTES`, `FB_RESERVED`, `CORRECTABLE_REMAPPED_ROWS`, `UNCORRECTABLE_REMAPPED_ROWS`, `ROW_REMAP_FAILURE`.
+`dcp-metrics-included` includes all 12 above, plus these 10 additional metrics:
+
+| # | Metric | Description | Behavior |
+|---|---|---|---|
+| 13 | `DCGM_FI_PROF_GR_ENGINE_ACTIVE` | GPU utilization (0.0-1.0), max scales with MIG slice ratio | **Per-GI** |
+| 14 | `DCGM_FI_PROF_SM_ACTIVE` | SM active ratio (same scaling as GR_ENGINE) | **Per-GI** |
+| 15 | `DCGM_FI_PROF_PIPE_TENSOR_ACTIVE` | Tensor pipe active ratio | **Per-GI** |
+| 16 | `DCGM_FI_PROF_DRAM_ACTIVE` | DRAM active ratio | **Per-GI** |
+| 17 | `DCGM_FI_PROF_PCIE_TX_BYTES` | PCIe TX rate (B/s) | Shared |
+| 18 | `DCGM_FI_PROF_PCIE_RX_BYTES` | PCIe RX rate (B/s) | Shared |
+| 19 | `DCGM_FI_DEV_FB_RESERVED` | Framebuffer reserved (MiB) | Per-GI |
+| 20 | `DCGM_FI_DEV_CORRECTABLE_REMAPPED_ROWS` | Correctable remapped rows | Shared |
+| 21 | `DCGM_FI_DEV_UNCORRECTABLE_REMAPPED_ROWS` | Uncorrectable remapped rows | Shared |
+| 22 | `DCGM_FI_DEV_ROW_REMAP_FAILURE` | Row remap failure | Shared |
 
 ### GPU model presets
 
