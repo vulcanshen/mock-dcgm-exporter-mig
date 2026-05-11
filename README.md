@@ -169,8 +169,8 @@ Simulates 2 NVIDIA H100 80GB HBM3 GPUs on the same node with different MIG parti
 
 | Metric | Description |
 |---|---|
-| `DCGM_FI_PROF_GR_ENGINE_ACTIVE` | GPU utilization (0.0-1.0), recommended metric for MIG (replaces `GPU_UTIL`) |
-| `DCGM_FI_PROF_SM_ACTIVE` | SM active ratio |
+| `DCGM_FI_PROF_GR_ENGINE_ACTIVE` | GPU utilization, recommended metric for MIG (replaces `GPU_UTIL`). Max value scales with MIG slice ratio — e.g. `3g` on H100 (7 slices) → max ~0.43 ([DCGM#138](https://github.com/NVIDIA/DCGM/issues/138)) |
+| `DCGM_FI_PROF_SM_ACTIVE` | SM active ratio (same scaling as GR_ENGINE_ACTIVE) |
 | `DCGM_FI_PROF_PIPE_TENSOR_ACTIVE` | Tensor pipe active ratio |
 | `DCGM_FI_PROF_DRAM_ACTIVE` | DRAM active ratio |
 | `DCGM_FI_DEV_FB_USED` | Framebuffer used (MiB) |
@@ -195,6 +195,7 @@ Each metric includes labels matching real dcgm-exporter MIG output:
 DCGM_FI_DEV_FB_USED{
   gpu="0",
   UUID="GPU-559c7f49-...",
+  pci_bus_id="00000000:1A:00.0",
   device="nvidia0",
   modelName="NVIDIA H100 80GB HBM3",
   GPU_I_PROFILE="3g.40gb",
@@ -240,7 +241,9 @@ DCGM_FI_DEV_FB_USED{
 | `DCGM_FI_PROF_PCIE_TX_BYTES` | gauge | Yes | Shared, simulated |
 | `DCGM_FI_PROF_PCIE_RX_BYTES` | gauge | Yes | Shared, simulated |
 
-**Coverage**: 21 of 25 official metrics covered. 4 metrics (`GPU_UTIL`, `MEM_COPY_UTIL`, `ENC_UTIL`, `DEC_UTIL`) are intentionally skipped as they are not available in MIG mode (real dcgm-exporter silently skips them too). 1 additional metric `SM_ACTIVE` (not in official CSV but available in MIG mode) is also included, totaling 22 metrics output.
+**Coverage**: Official CSV contains 26 entries (25 metrics + 1 label). 4 metrics (`GPU_UTIL`, `MEM_COPY_UTIL`, `ENC_UTIL`, `DEC_UTIL`) are intentionally skipped as they are not available in MIG mode (real dcgm-exporter silently skips them too). Remaining 21 metrics all covered. 1 additional metric `SM_ACTIVE` (commented out in official CSV but available in MIG mode) is also included, totaling 22 metrics output.
+
+Label format verified against real dcgm-exporter MIG output ([issue #512](https://github.com/NVIDIA/dcgm-exporter/issues/512), [issue #544](https://github.com/NVIDIA/dcgm-exporter/issues/544)) — label names, casing, and order match real hardware output.
 
 ### Metric simulation — Ornstein-Uhlenbeck Process
 

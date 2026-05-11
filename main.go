@@ -112,9 +112,10 @@ func loadConfig(path string) (*Config, error) {
 // ---------------------------------------------------------------------------
 
 type MIGInstance struct {
-	GPU       string
-	UUID      string
-	Device    string
+	GPU      string
+	UUID     string
+	PCIBusID string
+	Device   string
 	ModelName string
 	Profile   string
 	GIID      string
@@ -161,6 +162,21 @@ func profileMemoryMiB(profile string) float64 {
 	return float64(mem) * 1024
 }
 
+// profileSliceCount extracts the compute slice count from a MIG profile name.
+// e.g. "3g.40gb" → 3, "1g.10gb" → 1
+func profileSliceCount(profile string) int {
+	parts := strings.Split(profile, ".")
+	if len(parts) != 2 {
+		return 1
+	}
+	gStr := strings.TrimSuffix(parts[0], "g")
+	g, err := strconv.Atoi(gStr)
+	if err != nil || g < 1 {
+		return 1
+	}
+	return g
+}
+
 func instanceLoadFactor(idx, total int) float64 {
 	if total == 1 {
 		return 0.50
@@ -177,7 +193,7 @@ func buildSimulation(cfg *Config) ([]*PhysicalGPU, []*MIGInstance) {
 			UUID:    gpuCfg.UUID,
 			temp:    newOU(38, 0.05, 3.0, 20, 95),
 			memTemp: newOU(36, 0.04, 2.5, 18, 90),
-			power:   newOU(float64(gpuCfg.MemoryGB)*0.9, 0.08, 8.0, 30, 400),
+			power:   newOU(float64(gpuCfg.MemoryGB)*1.5, 0.08, 8.0, 50, 700),
 			clock:   newOU(1350, 0.1, 120, 210, 1980),
 			pcieTx:  newOU(5e8, 0.2, 2e8, 0, 25e9),
 			pcieRx:  newOU(3e8, 0.2, 1.5e8, 0, 25e9),
@@ -188,11 +204,16 @@ func buildSimulation(cfg *Config) ([]*PhysicalGPU, []*MIGInstance) {
 		for i, instCfg := range gpuCfg.Instances {
 			fbTotal := profileMemoryMiB(instCfg.Profile)
 			load := instanceLoadFactor(i, total)
+			slices := profileSliceCount(instCfg.Profile)
+			// H100/A100 have 7 MIG slices; GR_ENGINE_ACTIVE max scales
+			// proportionally (DCGM Issue #138)
+			grMax := float64(slices) / 7.0
 
 			inst := &MIGInstance{
-				GPU:       fmt.Sprintf("%d", gpuIdx),
-				UUID:      gpuCfg.UUID,
-				Device:    fmt.Sprintf("nvidia%d", gpuIdx),
+				GPU:      fmt.Sprintf("%d", gpuIdx),
+				UUID:     gpuCfg.UUID,
+				PCIBusID: fmt.Sprintf("00000000:%02X:00.0", 0x1A+gpuIdx*0x21),
+				Device:   fmt.Sprintf("nvidia%d", gpuIdx),
 				ModelName: gpuCfg.Model,
 				Profile:   instCfg.Profile,
 				GIID:      fmt.Sprintf("%d", instCfg.GIID),
@@ -202,8 +223,8 @@ func buildSimulation(cfg *Config) ([]*PhysicalGPU, []*MIGInstance) {
 				Pod:       instCfg.Pod,
 				Container: instCfg.Container,
 				FBTotal:   fbTotal,
-				grEngine:  newOU(load, 0.3, 0.12, 0, 1),
-				smActive:  newOU(load*0.8, 0.3, 0.10, 0, 1),
+				grEngine:  newOU(load*grMax, 0.3, 0.12*grMax, 0, grMax),
+				smActive:  newOU(load*0.8*grMax, 0.3, 0.10*grMax, 0, grMax),
 				tensor:    newOU(load*0.5, 0.2, 0.08, 0, 1),
 				dram:      newOU(0.15+load*0.3, 0.2, 0.06, 0, 1),
 				fbUsed:    newOU(fbTotal*(0.3+load*0.4), 0.05, fbTotal*0.02, 0, fbTotal),
@@ -277,6 +298,7 @@ func labelsStr(inst *MIGInstance) string {
 	pairs := []string{
 		fmt.Sprintf(`gpu="%s"`, inst.GPU),
 		fmt.Sprintf(`UUID="%s"`, inst.UUID),
+		fmt.Sprintf(`pci_bus_id="%s"`, inst.PCIBusID),
 		fmt.Sprintf(`device="%s"`, inst.Device),
 		fmt.Sprintf(`modelName="%s"`, inst.ModelName),
 		fmt.Sprintf(`GPU_I_PROFILE="%s"`, inst.Profile),
