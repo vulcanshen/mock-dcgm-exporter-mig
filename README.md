@@ -70,6 +70,25 @@ csv_profile: "dcp-metrics-included"
 | `dcp-metrics-included` | 22 | Yes | Proper MIG monitoring setup |
 | `default-counters` | 12 | No | Simulating environments without DCP config |
 
+`default-counters` outputs these 12 metrics (verified against real A100 MIG environment):
+
+| # | Metric | Description | Behavior |
+|---|---|---|---|
+| 1 | `DCGM_FI_DEV_SM_CLOCK` | SM clock (MHz) | Shared |
+| 2 | `DCGM_FI_DEV_MEM_CLOCK` | Memory clock (MHz) | Shared |
+| 3 | `DCGM_FI_DEV_MEMORY_TEMP` | Memory temperature (C) | Shared |
+| 4 | `DCGM_FI_DEV_GPU_TEMP` | GPU temperature (C) | Shared |
+| 5 | `DCGM_FI_DEV_POWER_USAGE` | Power draw (W) | Shared |
+| 6 | `DCGM_FI_DEV_TOTAL_ENERGY_CONSUMPTION` | Total energy (mJ) | Shared |
+| 7 | `DCGM_FI_DEV_PCIE_REPLAY_COUNTER` | PCIe retries | Shared |
+| 8 | `DCGM_FI_DEV_XID_ERRORS` | XID errors | Shared |
+| 9 | `DCGM_FI_DEV_FB_FREE` | Framebuffer free (MiB) | **Per-GI** |
+| 10 | `DCGM_FI_DEV_FB_USED` | Framebuffer used (MiB) | **Per-GI** |
+| 11 | `DCGM_FI_DEV_NVLINK_BANDWIDTH_TOTAL` | NVLink bandwidth | Shared |
+| 12 | `DCGM_FI_DEV_VGPU_LICENSE_STATUS` | vGPU license status | Shared |
+
+`dcp-metrics-included` adds 10 more metrics on top of the above: `PROF_GR_ENGINE_ACTIVE`, `PROF_SM_ACTIVE`, `PROF_PIPE_TENSOR_ACTIVE`, `PROF_DRAM_ACTIVE`, `PROF_PCIE_TX_BYTES`, `PROF_PCIE_RX_BYTES`, `FB_RESERVED`, `CORRECTABLE_REMAPPED_ROWS`, `UNCORRECTABLE_REMAPPED_ROWS`, `ROW_REMAP_FAILURE`.
+
 ### GPU model presets
 
 MEM_CLOCK, idle/max power, and MIG slice count are auto-derived from the `model` field:
