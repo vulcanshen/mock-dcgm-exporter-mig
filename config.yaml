@@ -1,3 +1,6 @@
+# "dcp-metrics-included" (default, 22 metrics) or "default-counters" (12 metrics)
+csv_profile: "dcp-metrics-included"
+
 gpus:
   - model: "NVIDIA H100 80GB HBM3"
     uuid: "GPU-559c7f49-e3ff-0358-0c74-8f7eeb60b7b0"

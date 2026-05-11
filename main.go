@@ -67,7 +67,8 @@ func (ou *OUProcess) step(dt float64) float64 {
 // ---------------------------------------------------------------------------
 
 type Config struct {
-	GPUs []GPUConfig `yaml:"gpus"`
+	CSVProfile string      `yaml:"csv_profile"`
+	GPUs       []GPUConfig `yaml:"gpus"`
 }
 
 type GPUConfig struct {
@@ -96,6 +97,12 @@ func loadConfig(path string) (*Config, error) {
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("parse config: %w", err)
 	}
+	if cfg.CSVProfile == "" {
+		cfg.CSVProfile = "dcp-metrics-included"
+	}
+	if cfg.CSVProfile != "dcp-metrics-included" && cfg.CSVProfile != "default-counters" {
+		return nil, fmt.Errorf("csv_profile must be 'dcp-metrics-included' or 'default-counters', got '%s'", cfg.CSVProfile)
+	}
 	if len(cfg.GPUs) == 0 {
 		return nil, fmt.Errorf("config must define at least one GPU")
 	}
@@ -108,14 +115,42 @@ func loadConfig(path string) (*Config, error) {
 }
 
 // ---------------------------------------------------------------------------
+// GPU model presets
+// ---------------------------------------------------------------------------
+
+type GPUPreset struct {
+	MemClock  int
+	IdlePower float64
+	MaxPower  float64
+	MIGSlices int
+}
+
+func getGPUPreset(model string) GPUPreset {
+	upper := strings.ToUpper(model)
+	switch {
+	case strings.Contains(upper, "H200"):
+		return GPUPreset{2619, 130, 700, 7}
+	case strings.Contains(upper, "H100"):
+		return GPUPreset{1593, 120, 700, 7}
+	case strings.Contains(upper, "A100") && strings.Contains(upper, "80GB"):
+		return GPUPreset{1215, 45, 400, 7}
+	case strings.Contains(upper, "A100"):
+		return GPUPreset{1215, 35, 300, 7}
+	case strings.Contains(upper, "A30"):
+		return GPUPreset{1215, 25, 165, 4}
+	default:
+		return GPUPreset{1215, 50, 400, 7}
+	}
+}
+
+// ---------------------------------------------------------------------------
 // MIG topology (runtime)
 // ---------------------------------------------------------------------------
 
 type MIGInstance struct {
-	GPU      string
-	UUID     string
-	PCIBusID string
-	Device   string
+	GPU       string
+	UUID      string
+	Device    string
 	ModelName string
 	Profile   string
 	GIID      string
@@ -134,15 +169,16 @@ type MIGInstance struct {
 }
 
 type PhysicalGPU struct {
-	UUID    string
-	temp    *OUProcess
-	memTemp *OUProcess
-	power   *OUProcess
-	energy  float64
-	clock   *OUProcess
-	pcieTx  *OUProcess
-	pcieRx  *OUProcess
-	nvlink  float64
+	UUID     string
+	preset   GPUPreset
+	temp     *OUProcess
+	memTemp  *OUProcess
+	power    *OUProcess
+	energy   float64
+	clock    *OUProcess
+	pcieTx   *OUProcess
+	pcieRx   *OUProcess
+	nvlink   float64
 }
 
 // ---------------------------------------------------------------------------
@@ -162,8 +198,6 @@ func profileMemoryMiB(profile string) float64 {
 	return float64(mem) * 1024
 }
 
-// profileSliceCount extracts the compute slice count from a MIG profile name.
-// e.g. "3g.40gb" → 3, "1g.10gb" → 1
 func profileSliceCount(profile string) int {
 	parts := strings.Split(profile, ".")
 	if len(parts) != 2 {
@@ -189,11 +223,13 @@ func buildSimulation(cfg *Config) ([]*PhysicalGPU, []*MIGInstance) {
 	var insts []*MIGInstance
 
 	for gpuIdx, gpuCfg := range cfg.GPUs {
+		preset := getGPUPreset(gpuCfg.Model)
 		pg := &PhysicalGPU{
 			UUID:    gpuCfg.UUID,
+			preset:  preset,
 			temp:    newOU(38, 0.05, 3.0, 20, 95),
 			memTemp: newOU(36, 0.04, 2.5, 18, 90),
-			power:   newOU(float64(gpuCfg.MemoryGB)*1.5, 0.08, 8.0, 50, 700),
+			power:   newOU(preset.IdlePower, 0.08, 8.0, preset.IdlePower*0.5, preset.MaxPower),
 			clock:   newOU(1350, 0.1, 120, 210, 1980),
 			pcieTx:  newOU(5e8, 0.2, 2e8, 0, 25e9),
 			pcieRx:  newOU(3e8, 0.2, 1.5e8, 0, 25e9),
@@ -205,15 +241,12 @@ func buildSimulation(cfg *Config) ([]*PhysicalGPU, []*MIGInstance) {
 			fbTotal := profileMemoryMiB(instCfg.Profile)
 			load := instanceLoadFactor(i, total)
 			slices := profileSliceCount(instCfg.Profile)
-			// H100/A100 have 7 MIG slices; GR_ENGINE_ACTIVE max scales
-			// proportionally (DCGM Issue #138)
-			grMax := float64(slices) / 7.0
+			grMax := float64(slices) / float64(preset.MIGSlices)
 
 			inst := &MIGInstance{
-				GPU:      fmt.Sprintf("%d", gpuIdx),
-				UUID:     gpuCfg.UUID,
-				PCIBusID: fmt.Sprintf("00000000:%02X:00.0", 0x1A+gpuIdx*0x21),
-				Device:   fmt.Sprintf("nvidia%d", gpuIdx),
+				GPU:       fmt.Sprintf("%d", gpuIdx),
+				UUID:      gpuCfg.UUID,
+				Device:    fmt.Sprintf("nvidia%d", gpuIdx),
 				ModelName: gpuCfg.Model,
 				Profile:   instCfg.Profile,
 				GIID:      fmt.Sprintf("%d", instCfg.GIID),
@@ -245,6 +278,7 @@ var (
 	lastTick   = time.Now()
 	tickerDone = make(chan struct{})
 
+	csvProfile   string
 	physicalGPUs []*PhysicalGPU
 	instances    []*MIGInstance
 )
@@ -298,7 +332,6 @@ func labelsStr(inst *MIGInstance) string {
 	pairs := []string{
 		fmt.Sprintf(`gpu="%s"`, inst.GPU),
 		fmt.Sprintf(`UUID="%s"`, inst.UUID),
-		fmt.Sprintf(`pci_bus_id="%s"`, inst.PCIBusID),
 		fmt.Sprintf(`device="%s"`, inst.Device),
 		fmt.Sprintf(`modelName="%s"`, inst.ModelName),
 		fmt.Sprintf(`GPU_I_PROFILE="%s"`, inst.Profile),
@@ -329,6 +362,7 @@ type metricDef struct {
 	name string
 	help string
 	typ  string
+	dcp  bool // true = only in dcp-metrics-included.csv
 }
 
 func metricsHandler(w http.ResponseWriter, r *http.Request) {
@@ -340,84 +374,51 @@ func metricsHandler(w http.ResponseWriter, r *http.Request) {
 	mu.Lock()
 	defer mu.Unlock()
 
+	isDCP := csvProfile == "dcp-metrics-included"
 	var b strings.Builder
 
-	writeMetric(&b, metricDef{
-		"DCGM_FI_PROF_GR_ENGINE_ACTIVE",
-		"Ratio of time the graphics engine is active.",
-		"gauge",
-	}, func(inst *MIGInstance) string {
-		return fmt.Sprintf("%.6f", inst.grEngine.value)
-	})
+	// --- Per-GI profiling metrics (dcp-metrics-included only) ---
 
-	writeMetric(&b, metricDef{
-		"DCGM_FI_PROF_SM_ACTIVE",
-		"The ratio of cycles an SM has at least 1 warp assigned.",
-		"gauge",
-	}, func(inst *MIGInstance) string {
-		return fmt.Sprintf("%.6f", inst.smActive.value)
-	})
+	if isDCP {
+		writeMetric(&b, metricDef{
+			"DCGM_FI_PROF_GR_ENGINE_ACTIVE",
+			"Ratio of time the graphics engine is active.",
+			"gauge", true,
+		}, func(inst *MIGInstance) string {
+			return fmt.Sprintf("%.6f", inst.grEngine.value)
+		})
 
-	writeMetric(&b, metricDef{
-		"DCGM_FI_PROF_PIPE_TENSOR_ACTIVE",
-		"Ratio of cycles the tensor pipe is active.",
-		"gauge",
-	}, func(inst *MIGInstance) string {
-		return fmt.Sprintf("%.6f", inst.tensor.value)
-	})
+		writeMetric(&b, metricDef{
+			"DCGM_FI_PROF_SM_ACTIVE",
+			"The ratio of cycles an SM has at least 1 warp assigned.",
+			"gauge", true,
+		}, func(inst *MIGInstance) string {
+			return fmt.Sprintf("%.6f", inst.smActive.value)
+		})
 
-	writeMetric(&b, metricDef{
-		"DCGM_FI_PROF_DRAM_ACTIVE",
-		"Ratio of cycles the device memory interface is active.",
-		"gauge",
-	}, func(inst *MIGInstance) string {
-		return fmt.Sprintf("%.6f", inst.dram.value)
-	})
+		writeMetric(&b, metricDef{
+			"DCGM_FI_PROF_PIPE_TENSOR_ACTIVE",
+			"Ratio of cycles the tensor pipe is active.",
+			"gauge", true,
+		}, func(inst *MIGInstance) string {
+			return fmt.Sprintf("%.6f", inst.tensor.value)
+		})
 
-	writeMetric(&b, metricDef{
-		"DCGM_FI_DEV_FB_USED",
-		"Framebuffer memory used (in MiB).",
-		"gauge",
-	}, func(inst *MIGInstance) string {
-		return fmt.Sprintf("%.0f", inst.fbUsed.value)
-	})
+		writeMetric(&b, metricDef{
+			"DCGM_FI_PROF_DRAM_ACTIVE",
+			"Ratio of cycles the device memory interface is active.",
+			"gauge", true,
+		}, func(inst *MIGInstance) string {
+			return fmt.Sprintf("%.6f", inst.dram.value)
+		})
+	}
 
-	writeMetric(&b, metricDef{
-		"DCGM_FI_DEV_FB_FREE",
-		"Framebuffer memory free (in MiB).",
-		"gauge",
-	}, func(inst *MIGInstance) string {
-		return fmt.Sprintf("%.0f", inst.FBTotal-inst.fbUsed.value)
-	})
-
-	writeMetric(&b, metricDef{
-		"DCGM_FI_DEV_FB_RESERVED",
-		"Framebuffer memory reserved (in MiB).",
-		"gauge",
-	}, func(inst *MIGInstance) string {
-		return fmt.Sprintf("%.0f", inst.FBTotal*0.02)
-	})
-
-	writeMetric(&b, metricDef{
-		"DCGM_FI_DEV_GPU_TEMP",
-		"GPU temperature (in C).",
-		"gauge",
-	}, func(inst *MIGInstance) string {
-		return fmt.Sprintf("%.0f", findGPU(inst.UUID).temp.value)
-	})
-
-	writeMetric(&b, metricDef{
-		"DCGM_FI_DEV_POWER_USAGE",
-		"Power draw (in W).",
-		"gauge",
-	}, func(inst *MIGInstance) string {
-		return fmt.Sprintf("%.3f", findGPU(inst.UUID).power.value)
-	})
+	// --- Common metrics (both CSVs) ---
 
 	writeMetric(&b, metricDef{
 		"DCGM_FI_DEV_SM_CLOCK",
 		"SM clock frequency (in MHz).",
-		"gauge",
+		"gauge", false,
 	}, func(inst *MIGInstance) string {
 		return fmt.Sprintf("%.0f", findGPU(inst.UUID).clock.value)
 	})
@@ -425,23 +426,39 @@ func metricsHandler(w http.ResponseWriter, r *http.Request) {
 	writeMetric(&b, metricDef{
 		"DCGM_FI_DEV_MEM_CLOCK",
 		"Memory clock frequency (in MHz).",
-		"gauge",
+		"gauge", false,
 	}, func(inst *MIGInstance) string {
-		return "1593"
+		return fmt.Sprintf("%d", findGPU(inst.UUID).preset.MemClock)
 	})
 
 	writeMetric(&b, metricDef{
 		"DCGM_FI_DEV_MEMORY_TEMP",
 		"Memory temperature (in C).",
-		"gauge",
+		"gauge", false,
 	}, func(inst *MIGInstance) string {
 		return fmt.Sprintf("%.0f", findGPU(inst.UUID).memTemp.value)
 	})
 
 	writeMetric(&b, metricDef{
+		"DCGM_FI_DEV_GPU_TEMP",
+		"GPU temperature (in C).",
+		"gauge", false,
+	}, func(inst *MIGInstance) string {
+		return fmt.Sprintf("%.0f", findGPU(inst.UUID).temp.value)
+	})
+
+	writeMetric(&b, metricDef{
+		"DCGM_FI_DEV_POWER_USAGE",
+		"Power draw (in W).",
+		"gauge", false,
+	}, func(inst *MIGInstance) string {
+		return fmt.Sprintf("%f", findGPU(inst.UUID).power.value)
+	})
+
+	writeMetric(&b, metricDef{
 		"DCGM_FI_DEV_TOTAL_ENERGY_CONSUMPTION",
 		"Total energy consumption since boot (in mJ).",
-		"counter",
+		"counter", false,
 	}, func(inst *MIGInstance) string {
 		return fmt.Sprintf("%.0f", findGPU(inst.UUID).energy)
 	})
@@ -449,7 +466,7 @@ func metricsHandler(w http.ResponseWriter, r *http.Request) {
 	writeMetric(&b, metricDef{
 		"DCGM_FI_DEV_PCIE_REPLAY_COUNTER",
 		"Total number of PCIe retries.",
-		"counter",
+		"counter", false,
 	}, func(inst *MIGInstance) string {
 		return "0"
 	})
@@ -457,15 +474,41 @@ func metricsHandler(w http.ResponseWriter, r *http.Request) {
 	writeMetric(&b, metricDef{
 		"DCGM_FI_DEV_XID_ERRORS",
 		"Value of the last XID error encountered.",
-		"gauge",
+		"gauge", false,
 	}, func(inst *MIGInstance) string {
 		return "0"
 	})
 
 	writeMetric(&b, metricDef{
+		"DCGM_FI_DEV_FB_FREE",
+		"Framebuffer memory free (in MiB).",
+		"gauge", false,
+	}, func(inst *MIGInstance) string {
+		return fmt.Sprintf("%.0f", inst.FBTotal-inst.fbUsed.value)
+	})
+
+	writeMetric(&b, metricDef{
+		"DCGM_FI_DEV_FB_USED",
+		"Framebuffer memory used (in MiB).",
+		"gauge", false,
+	}, func(inst *MIGInstance) string {
+		return fmt.Sprintf("%.0f", inst.fbUsed.value)
+	})
+
+	if isDCP {
+		writeMetric(&b, metricDef{
+			"DCGM_FI_DEV_FB_RESERVED",
+			"Framebuffer memory reserved (in MiB).",
+			"gauge", true,
+		}, func(inst *MIGInstance) string {
+			return fmt.Sprintf("%.0f", inst.FBTotal*0.02)
+		})
+	}
+
+	writeMetric(&b, metricDef{
 		"DCGM_FI_DEV_NVLINK_BANDWIDTH_TOTAL",
 		"Total number of NVLink bandwidth counters for all lanes.",
-		"counter",
+		"counter", false,
 	}, func(inst *MIGInstance) string {
 		return fmt.Sprintf("%.0f", findGPU(inst.UUID).nvlink)
 	})
@@ -473,50 +516,52 @@ func metricsHandler(w http.ResponseWriter, r *http.Request) {
 	writeMetric(&b, metricDef{
 		"DCGM_FI_DEV_VGPU_LICENSE_STATUS",
 		"vGPU License status.",
-		"gauge",
-	}, func(inst *MIGInstance) string {
-		return "1"
-	})
-
-	writeMetric(&b, metricDef{
-		"DCGM_FI_DEV_UNCORRECTABLE_REMAPPED_ROWS",
-		"Number of remapped rows for uncorrectable errors.",
-		"counter",
+		"gauge", false,
 	}, func(inst *MIGInstance) string {
 		return "0"
 	})
 
-	writeMetric(&b, metricDef{
-		"DCGM_FI_DEV_CORRECTABLE_REMAPPED_ROWS",
-		"Number of remapped rows for correctable errors.",
-		"counter",
-	}, func(inst *MIGInstance) string {
-		return "0"
-	})
+	if isDCP {
+		writeMetric(&b, metricDef{
+			"DCGM_FI_DEV_UNCORRECTABLE_REMAPPED_ROWS",
+			"Number of remapped rows for uncorrectable errors.",
+			"counter", true,
+		}, func(inst *MIGInstance) string {
+			return "0"
+		})
 
-	writeMetric(&b, metricDef{
-		"DCGM_FI_DEV_ROW_REMAP_FAILURE",
-		"Whether remapping of rows has failed.",
-		"gauge",
-	}, func(inst *MIGInstance) string {
-		return "0"
-	})
+		writeMetric(&b, metricDef{
+			"DCGM_FI_DEV_CORRECTABLE_REMAPPED_ROWS",
+			"Number of remapped rows for correctable errors.",
+			"counter", true,
+		}, func(inst *MIGInstance) string {
+			return "0"
+		})
 
-	writeMetric(&b, metricDef{
-		"DCGM_FI_PROF_PCIE_TX_BYTES",
-		"The rate of data transmitted over the PCIe bus - in bytes per second.",
-		"gauge",
-	}, func(inst *MIGInstance) string {
-		return fmt.Sprintf("%.0f", findGPU(inst.UUID).pcieTx.value)
-	})
+		writeMetric(&b, metricDef{
+			"DCGM_FI_DEV_ROW_REMAP_FAILURE",
+			"Whether remapping of rows has failed.",
+			"gauge", true,
+		}, func(inst *MIGInstance) string {
+			return "0"
+		})
 
-	writeMetric(&b, metricDef{
-		"DCGM_FI_PROF_PCIE_RX_BYTES",
-		"The rate of data received over the PCIe bus - in bytes per second.",
-		"gauge",
-	}, func(inst *MIGInstance) string {
-		return fmt.Sprintf("%.0f", findGPU(inst.UUID).pcieRx.value)
-	})
+		writeMetric(&b, metricDef{
+			"DCGM_FI_PROF_PCIE_TX_BYTES",
+			"The rate of data transmitted over the PCIe bus - in bytes per second.",
+			"gauge", true,
+		}, func(inst *MIGInstance) string {
+			return fmt.Sprintf("%.0f", findGPU(inst.UUID).pcieTx.value)
+		})
+
+		writeMetric(&b, metricDef{
+			"DCGM_FI_PROF_PCIE_RX_BYTES",
+			"The rate of data received over the PCIe bus - in bytes per second.",
+			"gauge", true,
+		}, func(inst *MIGInstance) string {
+			return fmt.Sprintf("%.0f", findGPU(inst.UUID).pcieRx.value)
+		})
+	}
 
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
 	fmt.Fprint(w, b.String())
@@ -549,13 +594,14 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
+	csvProfile = cfg.CSVProfile
 	physicalGPUs, instances = buildSimulation(cfg)
 
 	startTicker()
 
 	http.HandleFunc("/metrics", metricsHandler)
 	log.Printf("Mock dcgm-exporter (MIG) listening on %s/metrics", *addr)
-	log.Printf("Loaded config: %s", *configPath)
+	log.Printf("Loaded config: %s (csv_profile: %s)", *configPath, csvProfile)
 	log.Printf("Simulating %d MIG instance(s) on %d physical GPU(s)", len(instances), len(physicalGPUs))
 	for _, inst := range instances {
 		log.Printf("  GPU %s GI %s: %s (%s/%s)", inst.GPU, inst.GIID, inst.Profile, inst.Namespace, inst.Pod)
